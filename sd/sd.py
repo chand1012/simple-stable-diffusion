@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Union
 
 import torch
-from diffusers import (DiffusionPipeline, DPMSolverMultistepScheduler,
+from diffusers import (StableDiffusionPipeline, DPMSolverMultistepScheduler,
                        LMSDiscreteScheduler)
 from PIL import Image
 
@@ -38,6 +38,8 @@ MODELS = {
     'synthwave-punk': 'ItsJayQz/SynthwavePunk-v2',
     'sprite': 'Onodofthenorth/SD_PixelArt_SpriteSheet_Generator',
     'synthwave': 'PublicPrompts/Synthwave',
+    'photoreal': 'dreamlike-art/dreamlike-photoreal-2.0',
+    'dreamlike': 'dreamlike-art/dreamlike-diffusion-1.0'
 }
 
 
@@ -69,6 +71,9 @@ class Models(Enum):
     SYNTHWAVE_PUNK = 'synthwave-punk'
     SPRITE = 'sprite'
     SYNTHWAVE = 'synthwave'
+    PHOTOREAL = 'photoreal'
+    DREAMLIKE = 'dreamlike'
+
 
     def __str__(self) -> str:
         return self.value
@@ -92,6 +97,8 @@ MODEL_TRIGGERS = {
     'synthwave-punk': 'snthwve style nvinkpunk,',
     'sprite': 'PixelartFSS',
     'synthwave': 'snthwve style ',
+    'photoreal': 'photo ',
+    'dreamlike': 'dreamlikeart '
 }
 
 # these will be the only two schedulers available to the user.
@@ -109,19 +116,14 @@ DEFAULT_CONFIG = {
 }
 
 
-def disable_nsfw_checker(image, device, dytype):
-    '''Disable the NSFW checker. Overwrites `pipe.run_safety_checker`'''
-    return image, False
-
-
 class StableDiffusion:
     '''Stable Diffusion wrapper class.'''
 
-    def __init__(self, model: Union[str, Models] = 'sd-1.5', nsfw=False, scheduler='k_lms', upscale_factor=1, upscale_cpu=False, attention_slicing=True):
+    def __init__(self, model: Union[str, Models] = 'sd-1.5', nsfw=False, scheduler='k_lms', upscale_factor=1, upscale_cpu=False, attention_slicing=True, device=None):
         self.load_model(model, nsfw, scheduler,
-                        upscale_factor, upscale_cpu, attention_slicing)
+                        upscale_factor, upscale_cpu, attention_slicing, device)
 
-    def load_model(self, model: Union[str, Models] = 'sd-1.5', nsfw=False, scheduler='k_lms', upscale_factor=1, upscale_cpu=False, attention_slicing=True):
+    def load_model(self, model: Union[str, Models] = 'sd-1.5', nsfw=False, scheduler='k_lms', upscale_factor=1, upscale_cpu=False, attention_slicing=True, device=None):
         '''Loads a new model.'''
         if upscale_factor not in [1, 2, 4]:
             raise ValueError(
@@ -135,9 +137,18 @@ class StableDiffusion:
             print("WARNING: Model is not supported. Use at your own risk.")
 
         print("Loading model: " + self.model_name)
+        # guess the device
+        if device is None:
+            self.device = resolve_device()
+        else:
+            self.device = device
         # load the model
-        self.pipe = DiffusionPipeline.from_pretrained(
-            self.model_name, torch_dtype=torch.float16)
+        if device == 'cpu':
+            self.pipe = StableDiffusionPipeline.from_pretrained(
+                self.model_name, torch_dtype=torch.float32)
+        else:
+            self.pipe = StableDiffusionPipeline.from_pretrained(
+                self.model_name, torch_dtype=torch.float16)
         # set the scheduler
         if scheduler not in SCHEDULERS:
             raise ValueError(
@@ -146,13 +157,11 @@ class StableDiffusion:
             self.pipe.scheduler.config)
         # disable the nsfw checker if nsfw is allowed.
         if nsfw:
-            self.pipe.run_safety_checker = disable_nsfw_checker
-        # guess the device
-        self.device = resolve_device()
+            self.pipe.safety_checker = None
         # set the device
         self.pipe = self.pipe.to(self.device)
 
-        if attention_slicing:
+        if attention_slicing and self.device != 'mps':
             self.pipe.enable_attention_slicing()
         # image and upscaled image placeholders
         self.image = None
