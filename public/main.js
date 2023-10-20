@@ -64,7 +64,7 @@ async function onSubmit(event) {
   console.log(data);
   const model = formData.get("model-select");
   // post it to /generate_image/
-  const resp = await fetch(`/generate_image/?model=${model}`, {
+  const resp = await fetch(`/generate_image/?model=${model}&response_format=b64_json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
