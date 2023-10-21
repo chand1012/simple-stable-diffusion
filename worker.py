@@ -1,6 +1,6 @@
 import os
 from celery import Celery
-from sd import StableDiffusion, Models, DEFAULT_CONFIG
+from sd import StableDiffusion, DEFAULT_CONFIG
 import io  # For BytesIO
 from minio import Minio
 import uuid
@@ -11,7 +11,8 @@ load_dotenv()
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "Q3AM3UQ867SPQQA43P2F")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG")
+MINIO_SECRET_KEY = os.getenv(
+    "MINIO_SECRET_KEY", "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG")
 MINIO_URL = os.getenv("MINIO_URL", "http://127.0.0.1:9000")
 MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "imagegen")
 
@@ -46,6 +47,7 @@ def imagegen_task(prompt: str, negative_prompt: str = '', add_trigger: bool = Tr
     # return the url of the minio image
     return filename
 
+
 def upload_image(img):
     client = Minio(
         MINIO_URL,
@@ -67,13 +69,14 @@ def upload_image(img):
     length = len(buffered.getvalue())
     buffered.seek(0)
     client.put_object(
-        MINIO_BUCKET_NAME, 
+        MINIO_BUCKET_NAME,
         file_name,
         data=buffered,
-        length=length, 
+        length=length,
         content_type='image/jpeg'
     )
     print(f'uploaded image {file_name} to minio')
-    url = client.presigned_get_object(MINIO_BUCKET_NAME, file_name, timedelta(days=7))
+    url = client.presigned_get_object(
+        MINIO_BUCKET_NAME, file_name, timedelta(days=7))
 
     return url
