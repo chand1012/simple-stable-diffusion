@@ -1,0 +1,20 @@
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /app
+
+COPY requirements-linux-cuda.txt /app/requirements.txt
+
+RUN apt-get update && apt-get install -y --no-install-recommends python3.10 python3-dev python3-pip ffmpeg libsm6 libxext6
+
+RUN python3.10 -m pip install --no-cache-dir --upgrade pip && \
+    python3.10 -m pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
+
+COPY sd/ /app/sd/
+COPY util/ /app/util/
+COPY worker.py /app
+
+ENTRYPOINT [ "python3.10" ]
+
+CMD ["-m", "celery", "-A", "worker", "worker", "--loglevel=INFO", "-c", "1"]

@@ -1,0 +1,21 @@
+FROM python:3.10-slim-bookworm
+
+RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
+WORKDIR /app
+
+# update pip
+RUN pip install --upgrade pip
+# install requirements
+COPY public/ /app/public/
+COPY util/ /app/util/
+COPY api/ /app/api/
+COPY sd/ /app/sd/
+COPY app.py /app
+COPY worker.py /app
+COPY requirements.txt /app
+
+RUN pip install -r requirements.txt
+
+ENTRYPOINT ["python"]
+
+CMD ["-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
