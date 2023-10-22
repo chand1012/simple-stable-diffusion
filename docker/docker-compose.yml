@@ -35,13 +35,14 @@ services:
     restart: always
     volumes:
       - ai_model_data:/root/.cache/huggingface/hub
+      - gfpgan_data:/app/gfpgan
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [ gpu ]
+              capabilities: [gpu]
 
   minio:
     image: minio/minio
@@ -68,7 +69,7 @@ services:
 volumes:
   minio_data:
   ai_model_data:
-
+  gfpgan_data:
 
 networks:
   sdnet:

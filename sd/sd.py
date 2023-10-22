@@ -39,7 +39,9 @@ MODELS = {
     'sprite': 'Onodofthenorth/SD_PixelArt_SpriteSheet_Generator',
     'synthwave': 'PublicPrompts/Synthwave',
     'photoreal': 'dreamlike-art/dreamlike-photoreal-2.0',
-    'dreamlike': 'dreamlike-art/dreamlike-diffusion-1.0'
+    'dreamlike': 'dreamlike-art/dreamlike-diffusion-1.0',
+    'sdxl': 'stabilityai/stable-diffusion-xl-base-1.0',
+    'xl-refiner': 'stabilityai/stable-diffusion-xl-refiner-1.0',
 }
 
 
@@ -73,7 +75,7 @@ class Models(Enum):
     SYNTHWAVE = 'synthwave'
     PHOTOREAL = 'photoreal'
     DREAMLIKE = 'dreamlike'
-
+    SDXL = 'sdxl'
 
     def __str__(self) -> str:
         return self.value
@@ -132,6 +134,8 @@ class StableDiffusion:
         # string of the model. Allows for both enum and string.
         self.model = str(model)
         self.model_name = MODELS.get(self.model, self.model)
+        self.refiner = None
+        self.pipe = None
 
         if self.model not in MODELS:
             print("WARNING: Model is not supported. Use at your own risk.")
@@ -143,12 +147,26 @@ class StableDiffusion:
         else:
             self.device = device
         # load the model
-        if device == 'cpu':
-            self.pipe = StableDiffusionPipeline.from_pretrained(
-                self.model_name, torch_dtype=torch.float32)
+        if 'xl' in self.model:
+            if device == 'cpu':
+                self.pipe = StableDiffusionPipeline.from_pretrained(
+                    self.model_name, torch_dtype=torch.float32)
+                self.refiner = StableDiffusionPipeline.from_pretrained(
+                    'stabilityai/stable-diffusion-xl-refiner-1.0', torch_dtype=torch.float32, vae=self.pipe.vae)
+            else:
+                self.pipe = StableDiffusionPipeline.from_pretrained(
+                    self.model_name, torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
+                self.pipe.enable_model_cpu_offload()
+                self.refiner = StableDiffusionPipeline.from_pretrained(
+                    'stabilityai/stable-diffusion-xl-refiner-1.0', torch_dtype=torch.float16, vae=self.pipe.vae, use_safetensors=True, variant="fp16")
+                self.refiner.enable_model_cpu_offload()
         else:
-            self.pipe = StableDiffusionPipeline.from_pretrained(
-                self.model_name, torch_dtype=torch.float16)
+            if device == 'cpu':
+                self.pipe = StableDiffusionPipeline.from_pretrained(
+                    self.model_name, torch_dtype=torch.float32)
+            else:
+                self.pipe = StableDiffusionPipeline.from_pretrained(
+                    self.model_name, torch_dtype=torch.float16)
         # set the scheduler
         if scheduler not in SCHEDULERS:
             raise ValueError(
@@ -159,9 +177,12 @@ class StableDiffusion:
         if nsfw:
             self.pipe.safety_checker = None
         # set the device
-        self.pipe = self.pipe.to(self.device)
+        # if xl, cpu offload is enabled. No need to pipe
+        if 'xl' not in self.model:
+            self.pipe = self.pipe.to(self.device)
 
         if attention_slicing and self.device != 'mps':
+            # this wasn't working properly on the MPS device.
             self.pipe.enable_attention_slicing()
         # image and upscaled image placeholders
         self.image = None
@@ -195,11 +216,25 @@ class StableDiffusion:
         if add_trigger:
             prompt = MODEL_TRIGGERS.get(self.model, '') + prompt
         # generate the image
-        if self.device == 'cuda':
-            with torch.autocast('cuda'):
+
+        if not self.refiner:
+            if self.device == 'cuda':
+                with torch.autocast('cuda'):
+                    self.image = self.pipe(
+                        prompt, negative_prompt=negative_prompt, **opts).images[0]
+            else:
                 self.image = self.pipe(
                     prompt, negative_prompt=negative_prompt, **opts).images[0]
         else:
-            self.image = self.pipe(
-                prompt, negative_prompt=negative_prompt, **opts).images[0]
+            if self.device == 'cuda':
+                with torch.autocast('cuda'):
+                    self.image = self.pipe(
+                        prompt=prompt, negative_prompt=negative_prompt, output_type="latent", **opts).images
+                    self.image = self.refiner(
+                        prompt=prompt, negative_prompt=negative_prompt, denoising_start=0.8, image=self.image).images[0]
+            else:
+                self.image = self.pipe(
+                    prompt, negative_prompt=negative_prompt, output_type="latent", **opts).images
+                self.image = self.refiner(
+                    prompt=prompt, negative_prompt=negative_prompt, denoising_start=0.8, image=self.image).images[0]
         return self.image
