@@ -2,8 +2,8 @@ from enum import Enum
 from typing import Union
 
 import torch
-from diffusers import (StableDiffusionPipeline, DPMSolverMultistepScheduler,
-                       LMSDiscreteScheduler)
+from diffusers import (DPMSolverMultistepScheduler,
+                       LMSDiscreteScheduler, DiffusionPipeline)
 from PIL import Image
 
 from util.resolve_device import resolve_device
@@ -40,8 +40,8 @@ MODELS = {
     'synthwave': 'PublicPrompts/Synthwave',
     'photoreal': 'dreamlike-art/dreamlike-photoreal-2.0',
     'dreamlike': 'dreamlike-art/dreamlike-diffusion-1.0',
-    'sdxl': 'stabilityai/stable-diffusion-xl-base-1.0',
-    'xl-refiner': 'stabilityai/stable-diffusion-xl-refiner-1.0',
+    # 'sdxl': 'stabilityai/stable-diffusion-xl-base-1.0', # doesn't work on our GPU properly
+    'ssd-1b': 'segmind/SSD-1B'
 }
 
 
@@ -76,6 +76,7 @@ class Models(Enum):
     PHOTOREAL = 'photoreal'
     DREAMLIKE = 'dreamlike'
     SDXL = 'sdxl'
+    SSD = 'ssd-1b'
 
     def __str__(self) -> str:
         return self.value
@@ -121,11 +122,11 @@ DEFAULT_CONFIG = {
 class StableDiffusion:
     '''Stable Diffusion wrapper class.'''
 
-    def __init__(self, model: Union[str, Models] = 'sd-1.5', nsfw=False, scheduler='k_lms', upscale_factor=1, upscale_cpu=False, attention_slicing=True, device=None):
+    def __init__(self, model: Union[str, Models] = 'sd-1.5', nsfw=False, scheduler='k_lms', upscale_factor=1, upscale_cpu=False, attention_slicing=True, xformers=True, device=None):
         self.load_model(model, nsfw, scheduler,
-                        upscale_factor, upscale_cpu, attention_slicing, device)
+                        upscale_factor, upscale_cpu, attention_slicing, xformers, device)
 
-    def load_model(self, model: Union[str, Models] = 'sd-1.5', nsfw=False, scheduler='k_lms', upscale_factor=1, upscale_cpu=False, attention_slicing=True, device=None):
+    def load_model(self, model: Union[str, Models] = 'sd-1.5', nsfw=False, scheduler='k_lms', upscale_factor=1, upscale_cpu=False, attention_slicing=True, xformers=True, device=None):
         '''Loads a new model.'''
         if upscale_factor not in [1, 2, 4]:
             raise ValueError(
@@ -147,26 +148,14 @@ class StableDiffusion:
         else:
             self.device = device
         # load the model
-        if 'xl' in self.model:
-            if device == 'cpu':
-                self.pipe = StableDiffusionPipeline.from_pretrained(
-                    self.model_name, torch_dtype=torch.float32)
-                self.refiner = StableDiffusionPipeline.from_pretrained(
-                    'stabilityai/stable-diffusion-xl-refiner-1.0', torch_dtype=torch.float32, vae=self.pipe.vae)
-            else:
-                self.pipe = StableDiffusionPipeline.from_pretrained(
-                    self.model_name, torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
-                self.pipe.enable_model_cpu_offload()
-                self.refiner = StableDiffusionPipeline.from_pretrained(
-                    'stabilityai/stable-diffusion-xl-refiner-1.0', torch_dtype=torch.float16, vae=self.pipe.vae, use_safetensors=True, variant="fp16")
-                self.refiner.enable_model_cpu_offload()
+        if device == 'cpu':
+            self.pipe = DiffusionPipeline.from_pretrained(
+                self.model_name, torch_dtype=torch.float32)
         else:
-            if device == 'cpu':
-                self.pipe = StableDiffusionPipeline.from_pretrained(
-                    self.model_name, torch_dtype=torch.float32)
-            else:
-                self.pipe = StableDiffusionPipeline.from_pretrained(
-                    self.model_name, torch_dtype=torch.float16)
+            self.pipe = DiffusionPipeline.from_pretrained(
+                self.model_name, torch_dtype=torch.float16)
+            if xformers:
+                self.pipe.enable_xformers_memory_efficient_attention()
         # set the scheduler
         if scheduler not in SCHEDULERS:
             raise ValueError(
@@ -177,9 +166,7 @@ class StableDiffusion:
         if nsfw:
             self.pipe.safety_checker = None
         # set the device
-        # if xl, cpu offload is enabled. No need to pipe
-        if 'xl' not in self.model:
-            self.pipe = self.pipe.to(self.device)
+        self.pipe = self.pipe.to(self.device)
 
         if attention_slicing and self.device != 'mps':
             # this wasn't working properly on the MPS device.

@@ -1,4 +1,5 @@
 version: "3"
+name: "simple-sd"
 services:
   api:
     build:
@@ -36,13 +37,15 @@ services:
     volumes:
       - ai_model_data:/root/.cache/huggingface/hub
       - gfpgan_data:/app/gfpgan
+      - more_gfpgan_data:/usr/local/lib/python3.10/dist-packages/gfpgan/weights
+      - realesrgan_data:/usr/local/lib/python3.10/dist-packages/weights
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
   minio:
     image: minio/minio
@@ -70,6 +73,9 @@ volumes:
   minio_data:
   ai_model_data:
   gfpgan_data:
+  more_gfpgan_data:
+  realesrgan_data:
+
 
 networks:
   sdnet:

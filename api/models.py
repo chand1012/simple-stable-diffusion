@@ -8,3 +8,7 @@ class DiffusionRequest(BaseModel):
     add_trigger: bool = True
     upscale_factor: int = 2
     opts: dict = DEFAULT_CONFIG
+
+class UpscaleRequest(BaseModel):
+    image: str
+    upscale_factor: int = 2

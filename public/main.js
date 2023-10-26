@@ -34,26 +34,11 @@ async function onSubmit(event) {
   submitButton.setAttribute("disabled", true);
   // get the form data
   const formData = new FormData(event.target);
-  // get the form action
-  const formAction = event.target.action;
-  // convert so it fits the format of the api
-  /*
-            {
-                "prompt": "string",
-                "negative_prompt": "",
-                "add_trigger": true,
-                "opts": {
-                    "guidance_scale": 7.5,
-                    "height": 512,
-                    "num_inference_steps": 50,
-                    "width": 512
-                }
-            }
-            */
   const data = {
     prompt: formData.get("prompt"),
     negative_prompt: formData.get("negative-prompt"),
     add_trigger: true,
+    upscale_factor: parseInt(formData.get("upscale-factor")),
     opts: {
       guidance_scale: parseFloat(formData.get("guidance-scale")),
       height: parseInt(formData.get("height")),

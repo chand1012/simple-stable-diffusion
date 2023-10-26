@@ -1,11 +1,15 @@
 import os
+from typing import Literal
 from celery import Celery
-from sd import StableDiffusion, DEFAULT_CONFIG
 import io  # For BytesIO
+import base64
 from minio import Minio
+from sd import DEFAULT_CONFIG, StableDiffusion
+from sd.postprocess import PostProcessor
 import uuid
 from dotenv import load_dotenv
 from datetime import timedelta
+from PIL import Image
 
 load_dotenv()
 
@@ -18,12 +22,9 @@ MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "imagegen")
 
 celery = Celery("sd-worker", broker=REDIS_URL, backend=REDIS_URL)
 
-# stable_diff = StableDiffusion(
-#         Models.DREAMLIKE, nsfw=True, upscale_factor=UPSCALE_FACTOR)
-
 
 @celery.task(name="imagegen")
-def imagegen_task(prompt: str, negative_prompt: str = '', add_trigger: bool = True, upscale_factor: int = 1, model: str = 'dreamlike', opts: dict = DEFAULT_CONFIG):
+def imagegen_task(prompt: str, negative_prompt: str = '', upscale_factor: int = 1, add_trigger: bool = True, model: str = 'dreamlike', opts: dict = DEFAULT_CONFIG):
     # if model is not already loaded, load the new model
     # if stable_diff.model != model:
     #     stable_diff.load_model(model, nsfw=True, upscale_factor=upscale_factor)
@@ -38,14 +39,27 @@ def imagegen_task(prompt: str, negative_prompt: str = '', add_trigger: bool = Tr
         opts=opts
     )
 
-    if stable_diff.postprocessor != None:
-        # run the upscaler
-        generated_image = stable_diff.upscale()
+    if upscale_factor > 1:
+        generated_image = stable_diff.upscale(generated_image)
 
     # Upload image to minio
     filename = upload_image(generated_image)
     # return the url of the minio image
     return filename
+
+# upscales the image. Takes in a base64 encoded image and returns a base64 encoded image
+
+
+@celery.task(name="upscale")
+def image_upscale_task(image: str, upscale_factor: Literal[2, 4] = 2):
+    p = PostProcessor(upscale=upscale_factor)
+    buf = io.BytesIO(base64.b64decode(image))
+    img = Image.open(buf)
+    img = p.process(img)
+    buffered = io.BytesIO()
+    img.save(buffered, format="JPEG", quality=85)
+    buffered.seek(0)  # idk if this is needed or not
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 
 def upload_image(img):

@@ -1,16 +1,15 @@
+import base64  # For Base64 encoding
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Body
 # assuming the StableDiffusion class is in stable_diffusion.py
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
-from api.models import DiffusionRequest
-from sd import MODELS
-from worker import imagegen_task, celery
-
-import base64  # For Base64 encoding
 import requests
+
+from api.models import DiffusionRequest, UpscaleRequest
+from sd import MODELS
+from worker import imagegen_task, celery, image_upscale_task
 
 
 # Initialize FastAPI app
@@ -47,6 +46,13 @@ def generate_image_blocking(diffusion_req: DiffusionRequest = Body(...), model: 
         else:
             raise HTTPException(400, 'cannot decode image, minio down?')
     return {'image_url': image_url}
+
+
+@app.post('/upscale/')
+def upscale_image(params: UpscaleRequest = Body(...)):
+    t = image_upscale_task.delay(**params.model_dump())
+    image_b64 = celery.AsyncResult(t.id).get()
+    return {'b64_json': image_b64}
 
 
 @app.post("/generate/")
