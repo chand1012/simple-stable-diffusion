@@ -1,7 +1,7 @@
 # Simple Stable Diffusion
 Simple Stable Diffusion is a REST API that allows you to generate images through a queuing service. The service has workers dedicated to producing these images based on your request. This README will guide you through setting up and using the API effectively.
 
-## Prerequisits: 
+## Prerequisites: 
 Install [Docker GPU requirements](https://docs.docker.com/config/containers/resource_constraints/#gpu)
 
 1. Clone the Simple Stable Diffusion Repository
